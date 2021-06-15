@@ -1,0 +1,1 @@
+enum TelemetryPoint { Start, End }
