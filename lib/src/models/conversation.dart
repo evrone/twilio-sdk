@@ -137,11 +137,13 @@ class ConversationDescriptor {
       this.lastConsumedMessageIndex,
       this.notificationLevel,
       this.channel,
+      this.status,
       this.uniqueName,
       this.createdBy});
   String channel;
   String entityName;
   String uniqueName;
+  ConversationStatus status;
   Map<String, dynamic> attributes;
   String createdBy;
   String friendlyName;
@@ -149,6 +151,47 @@ class ConversationDescriptor {
   String dateCreated;
   String dateUpdated;
   ConversationNotificationLevel notificationLevel;
+
+  ConversationDescriptor.fromMap(Map<String, dynamic> map)
+      : lastConsumedMessageIndex = map['lastConsumedMessageIndex'],
+        status = conversationStatusFromString(map['status']),
+        friendlyName = map['friendly_name'],
+        dateUpdated = map['date_updated'],
+        dateCreated = map['date_created'],
+        uniqueName = map['unique_name'],
+        entityName = map['entity_name'],
+        createdBy = map['created_by'],
+        attributes = map['attributes'],
+        channel = map['channel'],
+        notificationLevel = map['notificationLevel'];
+  Map<String, dynamic> toMap() => {
+        'channel': channel,
+        'entityName': entityName,
+        'uniqueName': uniqueName,
+        'status': status,
+        'attributes': attributes,
+        'createdBy': createdBy,
+        'friendlyName': friendlyName,
+        'lastConsumedMessageIndex': lastConsumedMessageIndex,
+        'dateCreated': dateCreated,
+        'dateUpdated': dateUpdated,
+        'notificationLevel': notificationLevel,
+      };
+
+  bool get isEmpty =>
+      channel == null &&
+          entityName == null &&
+          uniqueName == null &&
+          status == null ||
+      attributes == null &&
+          createdBy == null &&
+          friendlyName == null &&
+          lastConsumedMessageIndex == null &&
+          dateCreated == null &&
+          dateUpdated == null &&
+          notificationLevel == null;
+
+  bool get isNotEmpty => !isEmpty;
 }
 
 class ConversationChannelState {
@@ -174,11 +217,11 @@ class ConversationChannelState {
   LastMessage lastMessage;
   ConversationLifecycleState state = ConversationLifecycleState.active;
 }
-
-class UpdatedEventArgs {
-  Conversation conversation;
-  List<ConversationUpdateReason> updateReasons;
-}
+//
+// class UpdatedEventArgs {
+//   Conversation conversation;
+//   List<ConversationUpdateReason> updateReasons;
+// }
 
 // abstract class SendMediaOptions {
 //   contentType: String;

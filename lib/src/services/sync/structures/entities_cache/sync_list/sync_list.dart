@@ -1,5 +1,5 @@
 import 'package:twilio_conversations/src/services/sync/core/closable.dart';
-import 'package:twilio_conversations/src/utils/sync_paginator.dart';
+import 'package:twilio_conversations/src/utils/rest_paginator.dart';
 
 import '../models/entity_metadata.dart';
 import 'core/sync_list_implementation.dart';
@@ -208,7 +208,7 @@ class SyncList<T> extends Closeable {
   ///   .catch(function(error) {
   ///     console.error('List getItems() failed', error);
   ///   });
-  Future<SyncPaginator<ListItem<T>>> getItems(
+  Future<RestPaginator<ListItem<T>>> getItems(
       {from = 0, pageSize = 50, order = 'asc'}) async {
     ensureNotClosed();
     return await _syncListImpl.getItems(

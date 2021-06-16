@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:jotaro/jotaro.dart';
+import 'package:twilio_conversations/src/abstract_classes/transport.dart';
 import 'package:twilio_conversations/src/enum/twilsock/event_sending_limitation.dart';
 import 'package:twilio_conversations/src/enum/twilsock/state.dart';
 import 'package:twilio_conversations/src/enum/twilsock/telemetry_point.dart';
@@ -28,7 +29,7 @@ import 'util/telemetry_events.dart';
 /// @fires Twilsock#tokenAboutToExpire
 /// @fires Twilsock#stateChanged
 /// @fires Twilsock#connectionError
-class TwilsockClient extends Stendo {
+class TwilsockClient extends Stendo implements Transport {
   /// @param {String} token Twilio access token
   /// @param {String} productId Product identifier. Should be the same as a grant name in token
   TwilsockClient(String token, this.productId,
@@ -185,12 +186,14 @@ class TwilsockClient extends Stendo {
 
   /// Indicates if twilsock is connected now
   /// @returns {Boolean}
+  @override
   bool get isConnected {
     return _channel.isConnected;
   }
 
   /// Current state
   /// @returns {String}
+  @override
   TwilsockState get state {
     return _channel.state;
   }

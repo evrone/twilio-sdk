@@ -1,4 +1,5 @@
 import 'package:jotaro/jotaro.dart';
+import 'package:twilio_conversations/src/abstract_classes/network.dart';
 import 'package:twilio_conversations/src/abstract_classes/storage.dart';
 import 'package:twilio_conversations/src/config/client_info.dart';
 import 'package:twilio_conversations/src/enum/sync/open_mode.dart';
@@ -74,7 +75,7 @@ class SyncClient<T> extends Stendo {
     SyncConfiguration config,
     TwilsockClient twilsock,
     NotificationsClient notifications,
-    SyncNetwork network,
+    Network network,
     Storage storage,
     SyncRouter router,
     Subscriptions subscriptions,

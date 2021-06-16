@@ -9,7 +9,6 @@ import 'package:twilio_conversations/src/services/sync/structures/entities_cache
 import 'package:twilio_conversations/src/services/sync/structures/entities_cache/sync_list/models/list_item.dart';
 import 'package:twilio_conversations/src/utils/rest_paginator.dart';
 import 'package:twilio_conversations/src/utils/sanitizer.dart';
-import 'package:twilio_conversations/src/utils/sync_paginator.dart';
 import 'package:twilio_conversations/src/utils/uri_builder.dart';
 
 import '../../entity.dart';
@@ -228,7 +227,7 @@ class SyncListImpl<T> extends SyncEntity {
 
   /// Query items from the List
   /// @private
-  Future<SyncPaginator<ListItem<T>>> queryItems(
+  Future<RestPaginator<ListItem<T>>> queryItems(
       {int from = 0, int limit, int index, pageToken, String order}) async {
     final url = UriBuilder(links.items)
         .addQueryParam('From', value: from)
@@ -268,14 +267,14 @@ class SyncListImpl<T> extends SyncEntity {
       return _cache.get(el.index);
     });
     final meta = response.data['meta'];
-    return RestPaginator(
+    return RestPaginator<ListItem<T>>(
         items: items,
         source: (pageToken) => queryItems(pageToken: pageToken),
         prevToken: meta['previous_token'],
         nextToken: meta['next_token']);
   }
 
-  Future<SyncPaginator<ListItem<T>>> getItems(
+  Future<RestPaginator<ListItem<T>>> getItems(
       {int from,
       int pageSize,
       int limit,

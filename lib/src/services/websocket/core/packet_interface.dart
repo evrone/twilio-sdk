@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:twilio_conversations/src/config/client_info.dart';
 import 'package:twilio_conversations/src/config/twilsock.dart';
 import 'package:twilio_conversations/src/errors/twilsockerror.dart';
 import 'package:twilio_conversations/src/services/websocket/channel/websocket_channel.dart';
@@ -14,7 +15,6 @@ import 'package:twilio_conversations/src/services/websocket/models/request_descr
 import 'package:uuid/uuid.dart';
 
 import '../../../errors/twilsockreplyerror.dart';
-import '../util/metadata.dart';
 import '../util/parser.dart';
 
 const REQUEST_TIMEOUT = 30000;
@@ -75,9 +75,9 @@ class PacketInterface {
 
   Future<InitReply> sendInit() async {
     //logger_1.log.trace('sendInit');
-    final metadata = Metadata.getMetadata(config);
-    final message = Init(config.token, config.continuationToken, metadata,
-        config.initRegistrations, config.tweaks);
+    final metadata = ClientInfo();
+    final message = Init(config.token, config.continuationToken,
+        metadata.toMap(), config.initRegistrations, config.tweaks);
     final response = await sendWithReply(message);
     return InitReply(
         response.id,

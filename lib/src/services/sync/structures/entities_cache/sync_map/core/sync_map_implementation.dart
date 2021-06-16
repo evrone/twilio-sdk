@@ -7,7 +7,6 @@ import 'package:twilio_conversations/src/services/sync/removal_handler/removal_h
 import 'package:twilio_conversations/src/services/sync/structures/cache/cache.dart';
 import 'package:twilio_conversations/src/utils/rest_paginator.dart';
 import 'package:twilio_conversations/src/utils/sanitizer.dart';
-import 'package:twilio_conversations/src/utils/sync_paginator.dart';
 import 'package:twilio_conversations/src/utils/uri_builder.dart';
 
 import '../../entity.dart';
@@ -229,7 +228,7 @@ class SyncMapImpl<T> extends SyncEntity {
   }
 
   /// @private
-  Future<SyncPaginator<MapItem<T>>> queryItems(
+  Future<RestPaginator<MapItem<T>>> queryItems(
       {String key,
       String from,
       int limit,
@@ -281,7 +280,7 @@ class SyncMapImpl<T> extends SyncEntity {
         nextToken: meta['next_token']);
   }
 
-  Future<SyncPaginator<MapItem<T>>> getItems(
+  Future<RestPaginator<MapItem<T>>> getItems(
       {String key,
       String from,
       int limit,

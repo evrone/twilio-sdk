@@ -125,11 +125,11 @@ class NotificationsClient extends Stendo {
   /// Adds the subscription for the given message type
   /// @param {String} messageType The type of message that you want to receive
   /// @param {String} channelType. Supported are 'twilsock', 'gcm' and 'fcm'
-  void subscribe(String messageType,
+  Future<void> subscribe(String messageType,
       {NotificationChannelType channelType =
           NotificationChannelType.twilsock}) async {
     //_1.log.trace('Add subscriptions for message type: ', messageType, channelType);
-    await registrar.subscribe(messageType, channelType);
+    return registrar.subscribe(messageType, channelType);
   }
 
   /// Remove the subscription for the particular message type

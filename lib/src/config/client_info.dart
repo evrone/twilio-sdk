@@ -1,10 +1,21 @@
 class ClientInfo {
-  const ClientInfo();
-  final sdk = 'Dart';
-  final sdkVer = '1.2.0';
-  final type = 'conversations';
-  final os = 'DartVM';
-  final osVer = 'Unknown';
-  final pl = 'Flutter';
-  final plVer = '2';
+  ClientInfo();
+  String sdk = 'dart';
+  String envv = '1.12';
+  String sdkVer = '1.2.0';
+  String type = 'conversations';
+  String os = 'dartvm';
+  String osVer = 'unknown';
+  String pl = 'flutter';
+  String plVer = '2';
+
+  Map<String, dynamic> toMap() => {
+        'env': sdk,
+        'envv': envv,
+        'os': os,
+        'osv': osVer,
+        'osa': '',
+        'sdk': sdk,
+        'type': type,
+      };
 }

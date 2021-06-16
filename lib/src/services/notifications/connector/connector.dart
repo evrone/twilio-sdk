@@ -30,6 +30,7 @@ class Connector extends Stendo {
   final NotificationsConfiguration config;
 
   RegistrationState desiredState = RegistrationState();
+  @override
   RegistrationState currentState = RegistrationState();
   bool hasActiveAttempt = false;
 

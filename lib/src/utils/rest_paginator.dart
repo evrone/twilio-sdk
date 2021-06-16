@@ -1,4 +1,4 @@
-import 'sync_paginator.dart';
+import 'package:twilio_conversations/src/abstract_classes/paginator.dart';
 
 /// @class Paginator
 /// @classdesc Pagination helper class
@@ -7,7 +7,7 @@ import 'sync_paginator.dart';
 /// @property {boolean} hasNextPage Indicates the existence of next page
 /// @property {boolean} hasPrevPage Indicates the existence of previous page
 
-class RestPaginator<T> implements SyncPaginator<T> {
+class RestPaginator<T> implements Paginator {
   RestPaginator({this.items, this.source, this.prevToken, this.nextToken});
 
   @override
@@ -16,9 +16,7 @@ class RestPaginator<T> implements SyncPaginator<T> {
   @override
   final List<T> items;
 
-  @override
   String prevToken;
-  @override
   String nextToken;
 
   Map<String, dynamic> state;
@@ -27,15 +25,12 @@ class RestPaginator<T> implements SyncPaginator<T> {
   @override
   bool get hasPrevPage => prevToken != null;
 
-  @override
   Future<RestPaginator<T>> nextPage() =>
       hasNextPage ? source(nextToken) : Future.error(Exception('No next page'));
 
-  @override
   Future<RestPaginator<T>> prevPage() => hasPrevPage
       ? source(prevToken)
       : Future.error(Exception('No previous page'));
 
-  @override
   int pageSize;
 }

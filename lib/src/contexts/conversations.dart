@@ -3,26 +3,25 @@ import 'dart:convert';
 import 'package:jotaro/jotaro.dart';
 import 'package:twilio_conversations/src/core/network.dart';
 import 'package:twilio_conversations/src/core/readhorizon.dart';
-
 import 'package:twilio_conversations/src/core/session/session.dart';
 import 'package:twilio_conversations/src/core/typingindicator.dart';
+import 'package:twilio_conversations/src/enum/conversations/notification_level.dart';
 import 'package:twilio_conversations/src/enum/conversations/status.dart';
 import 'package:twilio_conversations/src/enum/sync/open_mode.dart';
 import 'package:twilio_conversations/src/enum/twilsock/state.dart';
-
 import 'package:twilio_conversations/src/services/router/client.dart';
 import 'package:twilio_conversations/src/services/sync/client.dart';
 import 'package:twilio_conversations/src/services/sync/structures/entities_cache/sync_list/sync_list.dart';
 import 'package:twilio_conversations/src/services/sync/structures/entities_cache/sync_map/sync_map.dart';
+import 'package:twilio_conversations/src/utils/sync_paginator.dart';
 import 'package:twilio_conversations/src/utils/uri_builder.dart';
 import 'package:twilio_conversations/src/vendor/deffered/deffered.dart';
 
-import '../debug.dart';
 import '../models/conversation.dart';
 import 'users.dart';
 
 class Conversations extends Stendo {
-  Conversations(
+  Conversations({
     Session session,
     SyncClient syncClient,
     SyncList syncList,
@@ -31,7 +30,7 @@ class Conversations extends Stendo {
     ReadHorizon readHorizon,
     ConversationNetwork network,
     McsClient mcsClient,
-  )   : _network = network,
+  })  : _network = network,
         _session = session,
         _syncClient = syncClient,
         _syncList = syncList,
@@ -53,7 +52,7 @@ class Conversations extends Stendo {
 
   final Set _thumbstones = {};
   bool _syncListFetched = false;
-  final Deferred<bool> _syncListRead = Deferred<bool>();
+  final Deferred<bool> syncListRead = Deferred<bool>();
 
   Future<SyncMap> get map => _session
       .getMyConversationsId()
@@ -66,30 +65,31 @@ class Conversations extends Stendo {
       {Map<String, dynamic> attributes,
       String friendlyName,
       String uniqueName}) async {
-
     final response = await _session.addCommand('createConversation', {
       'friendlyName': friendlyName,
       'uniqueName': uniqueName,
       'attributes': json.encode(attributes)
     });
-    final conversationSid = 'conversationSid' in response ? response['conversationSid'] : null;
-    final conversationDocument = 'conversation' in response ? response['conversation'] : null;
-    final existingConversation = conversations.get(conversationSid);
-    if (existingConversation) {
-      await existingConversation._subscribe();
+    final conversationSid = response.sid;
+    final conversationDocument = response.uri; // todo
+    final existingConversation = conversations[conversationSid];
+    if (existingConversation != null) {
+      await existingConversation.subscribe();
       return existingConversation;
     }
-    final conversation = Conversation(services, {
-      channel: conversationDocument,
-      entityName: null,
-      uniqueName: null,
-      attributes: null,
-      createdBy: null,
-      friendlyName: null,
-      lastConsumedMessageIndex: null,
-      dateCreated: null,
-      dateUpdated: null
-    }, conversationSid);
+    final conversation = Conversation(
+        ConversationServices(
+            session: _session,
+            users: _users,
+            syncClient: _syncClient,
+            mcsClient: _mcsClient,
+            network: _network,
+            typingIndicator: _typingIndicator,
+            readHorizon: _readHorizon),
+        ConversationDescriptor(
+          channel: conversationDocument,
+        ),
+        conversationSid);
     conversations[conversation.sid] = conversation;
     _registerForEvents(conversation);
     await conversation.subscribe();
@@ -100,64 +100,86 @@ class Conversations extends Stendo {
   /// Fetch conversations list and instantiate all necessary objects
   Future<void> fetchConversations() async {
     await map
-        .then((map) async
-    {
-    map.on('itemAdded', (args) {
-    // debug('itemAdded: ' + args.item.key);
-    _upsertConversation(DataSource.sync, args[item][key], args.item.data);
-    });
-    map.on('itemRemoved', (args) {
-    // debug('itemRemoved: ' + args.key);
-    final sid = args.key;
-    if (!_syncListFetched) {
-    _thumbstones.add(sid);
-    }
-    final conversation = conversations[sid];
-    if (conversation != null) {
-    if (conversation != null && conversation.status == ConversationStatus.joined /*|| conversation.status == 'invited'*/) {
-    conversation.setStatus(ConversationStatus.notParticipating, DataSource.sync);
-    emit('conversationLeft',payload: conversation);
-    }
-    conversations.remove(sid);
-    emit('conversationRemoved', payload: conversation);
-    conversation.emit('removed', payload: conversation);
-    }
-    });
-    map.on('itemUpdated', (args) {
-    // debug('itemUpdated: ' + args.item.key);
-    _upsertConversation(DataSource.sync, args['item']['key'], args['item']['data']);
-    });
-    final upserts = [];
-    final paginator = await _syncList.getPage();
-    final items = paginator.items;
-    items.forEach((item) {
-    upserts.add(_upsertConversation(DataSource.synclist, item['channel_sid'], item));
-    });
-    while (paginator.hasNextPage) {
-    paginator = await paginator.nextPage();
-    paginator.items.forEach((item) {
-    upserts.add(_upsertConversation(DataSource.synclist, item['channel_sid'], item));
-    });
-    }
-    syncListRead.set(true);
-    return Future.value(upserts);
-    })
-        .then(() {
-      _syncListFetched = true;
-      _thumbstones.clear();
-      // debug('Conversations list fetched');
-    })
-        .then(() => this)
-        .onError((e) {
-    if (services.syncClient.connectionState TwilsockState.disconnected) {
-    // error('Failed to get conversations list', e);
-    }
-    // debug('ERROR: Failed to get conversations list', e);
-    throw e;
-    });
+        .then((map) async {
+          map.on('itemAdded', (args) {
+            // debug('itemAdded: ' + args.item.key);
+            _upsertConversation(DataSource.sync, args['item']['key'],
+                ConversationDescriptor.fromMap(args['item']['data']));
+          });
+          map.on('itemRemoved', (args) {
+            // debug('itemRemoved: ' + args.key);
+            final sid = args.key;
+            if (!_syncListFetched) {
+              _thumbstones.add(sid);
+            }
+            final conversation = conversations[sid];
+            if (conversation != null) {
+              if (conversation != null &&
+                  conversation.status ==
+                      ConversationStatus
+                          .joined /*|| conversation.status == 'invited'*/) {
+                conversation.setStatus(
+                    ConversationStatus.notParticipating, DataSource.sync);
+                emit('conversationLeft', payload: conversation);
+              }
+              conversations.remove(sid);
+              emit('conversationRemoved', payload: conversation);
+              conversation.emit('removed', payload: conversation);
+            }
+          });
+          map.on('itemUpdated', (args) {
+            // debug('itemUpdated: ' + args.item.key);
+            _upsertConversation(DataSource.sync, args['item']['key'],
+                ConversationDescriptor.fromMap(args['item']['data']));
+          });
+          final upserts = [];
+          var paginator = await _syncList.getPage();
+          final items = paginator.items;
+          items.forEach((item) {
+            upserts.add(_upsertConversation(
+                DataSource.synclist,
+                item.channelSid,
+                ConversationDescriptor(
+                    status: conversationStatusFromString(item.status),
+                    channel: item.channel,
+                    notificationLevel:
+                        notificationLevelFromString(item.notificationLevel),
+                    lastConsumedMessageIndex: item.lastConsumedMessageIndex)));
+          });
+          while (paginator.hasNextPage) {
+            paginator = await paginator.nextPage();
+            paginator.items.forEach((item) {
+              upserts.add(_upsertConversation(
+                  DataSource.synclist,
+                  item.channelSid,
+                  ConversationDescriptor(
+                      status: conversationStatusFromString(item.status),
+                      channel: item.channel,
+                      notificationLevel:
+                          notificationLevelFromString(item.notificationLevel),
+                      lastConsumedMessageIndex:
+                          item.lastConsumedMessageIndex)));
+            });
+          }
+          syncListRead.set(true);
+          return Future.value(upserts);
+        })
+        .then((_) {
+          _syncListFetched = true;
+          _thumbstones.clear();
+          // debug('Conversations list fetched');
+        })
+        .then((_) => this)
+        .onError((e, trace) {
+          if (_syncClient.connectionState == TwilsockState.disconnected) {
+            // error('Failed to get conversations list', e);
+          }
+          // debug('ERROR: Failed to get conversations list', e);
+          throw e;
+        });
   }
 
-  Map _wrapPaginator(page, Function op) {
+  SyncPaginator _wrapPaginator(page, Function op) {
     return op(page.items).then((items) => {
           'items': items,
           'hasNextPage': page.hasNextPage,
@@ -167,9 +189,12 @@ class Conversations extends Stendo {
         });
   }
 
-  Future<List<Conversation>> getConversations(dynamic args) {
-    return map.then((conversationsMap) => conversationsMap.getItems(args)).then(
-        (page) => _wrapPaginator(
+  Future<SyncPaginator<Conversation>> getConversations(
+      {String key, String from, int pageSize, String order}) {
+    return map
+        .then((conversationsMap) => conversationsMap.getItems(
+            key: key, from: from, pageSize: pageSize, order: order))
+        .then((page) async => _wrapPaginator(
             page,
             (items) => Future.value(items.map((item) =>
                 _upsertConversation(DataSource.sync, item.key, item.data)))));
@@ -177,7 +202,7 @@ class Conversations extends Stendo {
 
   Future<Conversation> getConversation(String sid) {
     return map
-        .then((conversationsMap) => conversationsMap.getItems({key: sid}))
+        .then((conversationsMap) => conversationsMap.getItems(key: sid))
         .then((page) => page.items.map((item) =>
             _upsertConversation(DataSource.sync, item.key, item.data)))
         .then((items) => items.isNotEmpty ? items.first : null);
@@ -186,37 +211,36 @@ class Conversations extends Stendo {
   Future<Conversation> getConversationByUniqueName(String uniqueName) async {
     var _a, _b;
     final links = await _session.getSessionLinks();
-    final url = UriBuilder(links.myChannelsUrl).addPathSegment(uniqueName)
-      .build();
+    final url =
+        UriBuilder(links.myChannelsUrl).addPathSegment(uniqueName).build();
     final response = await _network.get(url);
     final body = response.data;
     final sid = body['channel_sid'];
-    final status = ((_a = body) == null || _a == null) ? 'unknown' : _a.status;
+    final status = ((_a = body) == null || _a == null)
+        ? ConversationStatus.unknown
+        : _a.status;
     final notificationLevel =
         (_b = body) == null || _b == null ? null : _b.notification_level;
-    final data = {
-      'entityName': null,
-      'lastConsumedMessageIndex': body.['last_consumed_message_index'],
-      'status': status,
-      'friendlyName': body['friendly_name'],
-      'dateUpdated': body['date_updated'],
-      'dateCreated': body['date_created'],
-      'uniqueName': body['unique_name'],
-      'createdBy': body['created_by'],
-      'attributes': body['attributes'],
-      'channel': '$sid.channel',
-      'notificationLevel': notificationLevel,
-      'sid': sid
-    };
+    final data = ConversationDescriptor(
+      entityName: null,
+      lastConsumedMessageIndex: body['lastConsumedMessageIndex'],
+      status: status,
+      friendlyName: body['friendly_name'],
+      dateUpdated: body['date_updated'],
+      dateCreated: body['date_created'],
+      uniqueName: body['unique_name'],
+      createdBy: body['created_by'],
+      attributes: body['attributes'],
+      channel: '$sid.channel',
+      notificationLevel: notificationLevel,
+    );
     return _upsertConversation(DataSource.sync, sid, data);
   }
 
   Future<Conversation> getWhisperConversation(String sid) async {
     var _a, _b, _c, _d;
     final links = await _session.getSessionLinks();
-    final url = UriBuilder(links.publicChannelsUrl)
-      .addPathSegment(sid)
-      .build();
+    final url = UriBuilder(links.publicChannelsUrl).addPathSegment(sid).build();
     final response = await _network.get(url);
     final body = response.data;
     if (body.type != 'private') {
@@ -249,93 +273,110 @@ class Conversations extends Stendo {
         'closed') {
       return null;
     }
-    final status = ((_a = body) == null || _a == null) ? 'unknown' : _a.status;
+    final status = ((_a = body) == null || _a == null)
+        ? ConversationStatus.unknown
+        : _a.status;
     final notificationLevel =
         (_b = body) == null || _b == null ? null : _b.notification_level;
 
     return _upsertConversation(
-      DataSource.sync,
-      sid,
-      lastConsumedMessageIndex: body.lastConsumedMessageIndex,
-      status: status,
-      friendlyName: body.friendly_name,
-      dateUpd: body.date_updated,
-      dateCrt: body.date_created,
-      unqName: body.unique_name,
-      createdBy: body.created_by,
-      attributes: body.attributes,
-      channel: '$sid.channel',
-      notificationLevel: notificationLevel,
-    );
+        DataSource.sync,
+        sid,
+        ConversationDescriptor(
+          lastConsumedMessageIndex: body['lastConsumedMessageIndex'],
+          status: conversationStatusFromString(status),
+          friendlyName: body['friendly_name'],
+          dateUpdated: body['date_updated'],
+          dateCreated: body['date_created'],
+          uniqueName: body['unique_name'],
+          createdBy: body['created_by'],
+          attributes: body['attributes'],
+          channel: '$sid.channel',
+          notificationLevel: notificationLevel,
+        ));
   }
 
-  Future<Conversation> _upsertConversation(DataSource source, String sid,
-      ConversationDescriptor desc) async {
+  Future<Conversation> _upsertConversation(
+      DataSource source, String sid, ConversationDescriptor desc) async {
     // trace('upsertConversation(sid=' + sid + ', data=', data);
-    final conversation = conversations[sid];
+    var conversation = conversations[sid];
     // Update the Conversation's status if we know about it
     if (conversation != null) {
       // trace('upsertConversation: conversation ' + sid + ' is known and it\'s' +
       // ' status is known from source ' + conversation.statusSource() +
       //     ' and update came from source ' + source, conversation);
-    if (conversation.statusSource == null
-    || source == conversation.statusSource
-    || (source == DataSource.synclist && conversation.statusSource != DataSource.sync)
-    || source == DataSource.sync) {
-    if (conversation.status != ConversationStatus.joined) {
-    conversation.setStatus(ConversationStatus.joined, source);
-    final updateData = {};
-    if (desc.notificationLevel != null) {
-    updateData.notificationLevel = data.notificationLevel;
+      if (conversation.statusSource == null ||
+          source == conversation.statusSource ||
+          (source == DataSource.synclist &&
+              conversation.statusSource != DataSource.sync) ||
+          source == DataSource.sync) {
+        if (conversation.status != ConversationStatus.joined) {
+          conversation.setStatus(ConversationStatus.joined, source);
+          final updateData = {};
+          if (desc.notificationLevel != null) {
+            updateData['notificationLevel'] = desc.notificationLevel;
+          }
+          if (desc.lastConsumedMessageIndex != null) {
+            updateData['lastConsumedMessageIndex'] =
+                desc.lastConsumedMessageIndex;
+          }
+          if (updateData.isNotEmpty) {
+            conversation.update(updateData);
+          }
+          await conversation.subscribe().then((_) {
+            emit('conversationJoined', payload: conversation);
+          });
+        } else if (desc.status == ConversationStatus.notParticipating &&
+            conversation.status == ConversationStatus.joined) {
+          conversation.setStatus(ConversationStatus.notParticipating, source);
+          conversation.update(desc.toMap());
+          await conversation.subscribe().then((_) {
+            emit('conversationLeft', payload: conversation);
+          });
+        } else if (desc.status == ConversationStatus.notParticipating) {
+          await conversation.subscribe();
+        } else {
+          conversation.update(desc.toMap());
+        }
+      } else {
+        // // trace('upsertConversation: conversation is known from sync and came from chat, ignoring', {
+        // sid: sid,
+        // data: desc.status,
+        // conversation: conversation.status
+        // });
+      }
+      return conversation.subscribe().then((_) => conversation);
     }
-    if (typeof data.lastConsumedMessageIndex != null) {
-    updateData.lastConsumedMessageIndex = data.lastConsumedMessageIndex;
+    if ((source == DataSource.chat || source == DataSource.synclist) &&
+        _thumbstones.contains(sid)) {
+      // if conversation was deleted, we ignore it
+      // trace('upsertConversation: conversation is deleted and came again from chat, ignoring', sid);
+      return null;
     }
-    if (!util_1.isDeepEqual(updateData, {})) {
-    conversation._update(updateData);
-    }
-    conversation._subscribe().then(() { emit('conversationJoined', payload: conversation); });
-    }
-    else if (data.status == 'notParticipating' && conversation.status == ConversationStatus.joined) {
-    conversation.setStatus('notParticipating', source);
-    conversation.update(data);
-    conversation.subscribe().then(() { emit('conversationLeft', payload: conversation); });
-    }
-    else if (data.status == ConversationStatus.notParticipating) {
-    conversation.subscribe();
-    }
-    else {
-    conversation.update(data);
-    }
-    }
-    else {
-    // trace('upsertConversation: conversation is known from sync and came from chat, ignoring', {
-    sid: sid,
-    data: data.status,
-    conversation: conversation.status
+    // Fetch the Conversation if we don't know about it
+    // trace('upsertConversation: creating local conversation object with sid ' + sid, data);
+    conversation = Conversation(
+        ConversationServices(
+            session: _session,
+            users: _users,
+            syncClient: _syncClient,
+            mcsClient: _mcsClient,
+            network: _network,
+            typingIndicator: _typingIndicator,
+            readHorizon: _readHorizon),
+        desc,
+        sid);
+    conversations[sid] = conversation;
+    return conversation.subscribe().then((_) {
+      _registerForEvents(conversation);
+      emit('conversationAdded', payload: conversation);
+      if (desc.status == ConversationStatus.joined) {
+        conversation.setStatus(ConversationStatus.joined, source);
+        emit('conversationJoined', payload: conversation);
+      }
+      return conversation;
     });
-    }
-    return conversation._subscribe().then(() => conversation);
   }
-  if ((source == DataSource.chat || source == DataSource.synclist) && _thumbstones.contains(sid)) {
-  // if conversation was deleted, we ignore it
-  // trace('upsertConversation: conversation is deleted and came again from chat, ignoring', sid);
-  return;
-  }
-  // Fetch the Conversation if we don't know about it
-  // trace('upsertConversation: creating local conversation object with sid ' + sid, data);
-  conversation = Conversation(services, data, sid);
-  conversations.set(sid, conversation);
-  return conversation._subscribe().then(() {
-  registerForEvents(conversation);
-  emit('conversationAdded', conversation);
-  if (data.status == 'joined') {
-  conversation._setStatus('joined', source);
-  emit('conversationJoined', conversation);
-  }
-  return conversation;
-  });
-}
 
   void _onConversationRemoved(String sid) {
     final conversation = _conversations[sid];
@@ -347,19 +388,19 @@ class Conversations extends Stendo {
   }
 
   void _registerForEvents(Conversation conversation) {
-    conversation.on('removed', () => _onConversationRemoved(conversation.sid));
+    conversation.on('removed', (_) => _onConversationRemoved(conversation.sid));
     conversation.on(
         'updated', (args) => emit('conversationUpdated', payload: args));
-    conversation.on('participantJoined', () => emit('participantJoined'));
-    conversation.on('participantLeft', () => emit('participantLeft'));
+    conversation.on('participantJoined', (_) => emit('participantJoined'));
+    conversation.on('participantLeft', (_) => emit('participantLeft'));
     conversation.on('participantUpdated',
         (args) => emit('participantUpdated', payload: args));
-    conversation.on('messageAdded', () => emit('messageAdded'));
+    conversation.on('messageAdded', (_) => emit('messageAdded'));
     conversation.on(
         'messageUpdated', (args) => emit('messageUpdated', payload: args));
-    conversation.on('messageRemoved', () => emit('messageRemoved'));
-    conversation.on('typingStarted', () => emit('typingStarted'));
-    conversation.on('typingEnded', () => emit('typingEnded'));
+    conversation.on('messageRemoved', (_) => emit('messageRemoved'));
+    conversation.on('typingStarted', (_) => emit('typingStarted'));
+    conversation.on('typingEnded', (_) => emit('typingEnded'));
   }
 }
 

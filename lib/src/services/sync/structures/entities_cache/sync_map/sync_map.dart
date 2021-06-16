@@ -1,5 +1,5 @@
 import 'package:twilio_conversations/src/services/sync/core/closable.dart';
-import 'package:twilio_conversations/src/utils/sync_paginator.dart';
+import 'package:twilio_conversations/src/utils/rest_paginator.dart';
 
 import '../models/entity_metadata.dart';
 import 'core/sync_map_implementation.dart';
@@ -183,10 +183,11 @@ class SyncMap<T> extends Closeable {
   ///   .catch(function(error) {
   ///     console.error('Map getItems() failed', error);
   ///   });
-  Future<SyncPaginator<MapItem<T>>> getItems(
-      {String from, int pageSize = 50, String order = 'asc'}) {
+  Future<RestPaginator<MapItem<T>>> getItems(
+      {String key, String from, int pageSize = 50, String order = 'asc'}) {
     ensureNotClosed();
-    return _syncMapImpl.getItems(from: from, pageSize: pageSize, order: order);
+    return _syncMapImpl.getItems(
+        key: key, from: from, pageSize: pageSize, order: order);
   }
 
   /// Update the time-to-live of the map.

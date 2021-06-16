@@ -62,7 +62,7 @@ class Messages extends Stendo {
             if (messagesByIndex.containsKey(index)) {
               final message = messagesByIndex[index];
               messagesByIndex.remove(message.index);
-              message.removeAllListeners('updated'); // todo
+              message.removeListenersFrom('updated'); // todo
               emit('messageRemoved', payload: message);
             }
           });
@@ -160,10 +160,10 @@ class Messages extends Stendo {
     final items = op(page.items)..sort((x, y) => x.index - y.index);
 
     return SyncPaginator<Message>(items,
-        hasPrevPage: shouldReverse ? page.hasNextPage : page.hasPrevPage,
-        hasNextPage: shouldReverse ? page.hasPrevPage : page.hasNextPage,
-        prevPage: shouldReverse ? np : pp,
-        nextPage: shouldReverse ? pp : np);
+        hasPrvPageOverride: shouldReverse ? page.hasNextPage : page.hasPrevPage,
+        hasNxtPageOverride: shouldReverse ? page.hasPrevPage : page.hasNextPage,
+        prevPageOverride: shouldReverse ? np : pp,
+        nextPageOverride: shouldReverse ? pp : np);
   }
 
   Message _upsertMessage(int index, MessageState state) {
